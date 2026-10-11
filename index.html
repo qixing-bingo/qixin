@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XX潮玩七星连珠</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui, sans-serif;}
+body{
+  padding:12px;
+  background: #fff8e0;
+}
+/*标题样式*/
+.title{
+  font-size:44px;
+  font-weight:900;
+  text-align:center;
+  color:#dd2222;
+  text-shadow: 2px 2px #fff, -2px -2px #fff, 2px -2px #fff, -2px 2px #fff;
+  margin-bottom:16px;
+}
+/*顶部统计栏 - 全部同行，均分宽度*/
+.result-row{
+  display:flex;
+  justify-content:center;
+  gap:6px;
+  margin-bottom:16px;
+  align-items:center;
+  width:100%;
+}
+.result-box{
+  flex:1;
+  padding:8px 4px;
+  border-radius:16px;
+  text-align:center;
+  font-weight:bold;
+  box-shadow:0 3px 8px rgba(0,0,0,0.08);
+}
+.result-label{
+  display:block;
+  font-size:16px;
+}
+.result-num{
+  display:block;
+  font-size:34px;
+  line-height:1.1;
+  margin-top:2px;
+}
+.box5{ background:#ffe59a; color:#b56600; }
+.box6{ background:#ffc27a; color:#a04200; }
+.box7{ background:#ff9bb0; color:#ffffff; }
+/*紫色许愿格：锁定固定尺寸，字体缩小 */
+.boxWish{
+  background:#e8ddff;
+  color:#583492;
+  min-width:130px;
+  max-width:130px;
+}
+.boxWish .result-label{
+  font-size:14px;
+}
+.boxWish .result-num{
+  font-size:18px;
+}
+.boxLen{ background:#ddf4ff; color:#185b82; }
+
+/*棋盘容器，铺满屏幕宽度*/
+.board-wrap{
+  position:relative;
+  max-width:98vw;
+  margin:0 auto;
+}
+.board{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:6px;
+  background:#f2b84b;
+  padding:10px;
+  border-radius:14px;
+}
+#lineCanvas{
+  position:absolute;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  z-index:10;
+}
+/*格子，放大字体*/
+.cell{
+  aspect-ratio:1/1;
+  background:#fff2cc;
+  border:2px solid #e6a838;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  font-weight:bold;
+  color:#6b2f00;
+  border-radius:8px;
+  transition: all 0.2s;
+}
+.cell.wish{
+  border:4px solid;
+  border-image: linear-gradient(45deg, #ff3366,#ffdd22,#33ddff,#aa66ff) 1;
+  font-size:28px;
+}
+.cell.active{
+  background:#ff9b24;
+  color:white;
+  font-size:28px;
+}
+.ctrl{
+  max-width:98vw;
+  margin:20px auto 0;
+  text-align:center;
+}
+button{
+  width:80%;
+  max-width:450px;
+  padding:16px;
+  font-size:32px;
+  border:none;
+  background:#e69020;
+  color:#fff;
+  border-radius:14px;
+  font-weight:bold;
+}
+.wish-popup{
+  position:fixed;
+  top:50%;
+  left:50%;
+  transform: translate(-50%,-50%);
+  font-size:48px;
+  font-weight:bold;
+  color:#ff3366;
+  text-shadow: 0 0 10px #fff,0 0 20px #ffdd00;
+  pointer-events:none;
+  z-index:99;
+  opacity:0;
+}
+.wish-popup.show{
+  animation: popAnim 1.2s ease-out forwards;
+}
+@keyframes popAnim{
+  0%{opacity:0; transform: translate(-50%,-50%) scale(0.5);}
+  20%{opacity:1; transform: translate(-50%,-50%) scale(1.1);}
+  80%{opacity:1; transform: translate(-50%,-50%) scale(1);}
+  100%{opacity:0; transform: translate(-50%,-50%) scale(1);}
+}
+</style>
+</head>
+<body>
+<div class="title">XX潮玩七星连珠</div>
+<div class="result-row">
+  <div class="result-box box5">
+    <span class="result-label">五连</span>
+    <span class="result-num" id="c5">0</span>
+  </div>
+  <div class="result-box box6">
+    <span class="result-label">六连</span>
+    <span class="result-num" id="c6">0</span>
+  </div>
+  <div class="result-box box7">
+    <span class="result-label">七连</span>
+    <span class="result-num" id="c7">0</span>
+  </div>
+  <div class="result-box boxWish">
+    <span class="result-label">许愿数字</span>
+    <span class="result-num" id="wishNum">7（未许愿成功）</span>
+  </div>
+  <div class="result-box boxLen">
+    <span class="result-label">已点亮</span>
+    <span class="result-num" id="wishLineLen">0</span>
+  </div>
+</div>
+<div class="board-wrap">
+  <div class="board" id="board"></div>
+  <canvas id="lineCanvas"></canvas>
+</div>
+<div class="ctrl">
+<button onclick="clearAll()">下一把</button>
+</div>
+<div class="wish-popup" id="wishText">许愿成功</div>
+
+<script>
+let audioCtx;
+
+function initAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playCuteSound(isSelect) {
+  if(!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = "sine";
+  if(isSelect){
+    osc.frequency.setValueAtTime(720, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(950, audioCtx.currentTime + 0.07);
+  }else{
+    osc.frequency.setValueAtTime(420, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(280, audioCtx.currentTime + 0.07);
+  }
+  gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.12);
+}
+
+function playFireworkSmall(){
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const notes = [660,740,880,990,1100];
+  notes.forEach((freq,i)=>{
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t + i*0.12);
+    gain.gain.setValueAtTime(0.0001, t + i*0.12);
+    gain.gain.exponentialRampToValueAtTime(0.20, t + i*0.12 + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i*0.12 + 0.32);
+    osc.start(t + i*0.12);
+    osc.stop(t + i*0.12 + 0.35);
+  });
+}
+
+function playFireworkMiddle(){
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const notes = [523,600,659,740,1047,1320];
+  notes.forEach((freq,i)=>{
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t + i*0.11);
+    gain.gain.setValueAtTime(0.0001, t + i*0.11);
+    gain.gain.exponentialRampToValueAtTime(0.22, t + i*0.11 + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i*0.11 + 0.38);
+    osc.start(t + i*0.11);
+    osc.stop(t + i*0.11 + 0.40);
+  });
+}
+
+function playFireworkBig(){
+  if(!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const notes = [440,500,554,659,880,1108,1319,1760];
+  notes.forEach((freq,i)=>{
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, t + i*0.10);
+    gain.gain.setValueAtTime(0.0001, t + i*0.10);
+    gain.gain.exponentialRampToValueAtTime(0.25, t + i*0.10 + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i*0.10 + 0.42);
+    osc.start(t + i*0.10);
+    osc.stop(t + i*0.10 + 0.45);
+  });
+}
+
+// ===== 新增震动函数 强度：五连(低) → 六连(中) → 七连(强) =====
+function vibrate5(){
+  //五连：短轻震动
+  if(navigator.vibrate) navigator.vibrate(80);
+}
+function vibrate6(){
+  //六连：中等，两段震动
+  if(navigator.vibrate) navigator.vibrate([120,60,120]);
+}
+function vibrate7(){
+  //七连：最强，三连长震动
+  if(navigator.vibrate) navigator.vibrate([180,80,180,80,180]);
+}
+
+function rc2id(r,c){return (r-1)*7 + c;}
+function id2rc(id){
+  let idx = id -1;
+  let r = Math.floor(idx /7)+1;
+  let c = idx %7 +1;
+  return {r,c};
+}
+let active = new Set();
+let wishCellId = null;
+let finalWishId = null;
+let usedWish = false;
+const boardEl = document.getElementById("board");
+const canvas = document.getElementById("lineCanvas");
+const ctx = canvas.getContext("2d");
+let lineList = [];
+let animTime = 0;
+let fireworks = [];
+let triggeredKeys = new Set();
+
+for(let r=1;r<=7;r++){
+  for(let c=1;c<=7;c++){
+    let id = rc2id(r,c);
+    let div = document.createElement("div");
+    div.className="cell";
+    div.innerText = id;
+    div.onclick = ()=>clickCell(id);
+    boardEl.appendChild(div);
+  }
+}
+
+function showWishPopup(){
+  const pop = document.getElementById("wishText");
+  pop.classList.remove("show");
+  void pop.offsetWidth;
+  pop.classList.add("show");
+}
+
+function resizeCanvas(){
+  const wrap = document.querySelector(".board-wrap");
+  canvas.width = wrap.offsetWidth;
+  canvas.height = wrap.offsetHeight;
+}
+window.addEventListener('resize',resizeCanvas);
+
+class Particle {
+  constructor(x,y,color,size,speed,life){
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random()-0.5) * speed;
+    this.vy = (Math.random()-0.5) * speed - speed*0.4;
+    this.color = color;
+    this.size = size;
+    this.maxLife = life;
+    this.life = life;
+  }
+  update(){
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += 0.08;
+    this.vx *= 0.995;
+    this.life -= 0.018;
+  }
+  draw(){
+    ctx.globalAlpha = Math.max(0,this.life/this.maxLife);
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function triggerFirework5(){
+  vibrate5(); //五连低强度震动
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const colors = ["#ffd24a","#ff9b24","#fff2a8","#ffffff"];
+  for(let i=0;i<60;i++){
+    fireworks.push(new Particle(cx, cy, colors[i%colors.length],4,9,70));
+  }
+  playFireworkSmall();
+}
+
+function triggerFirework6(){
+  vibrate6(); //六连中等震动
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const colors = ["#ff7722","#ff4466","#ffcc22","#ffffff","#ffaacc"];
+  for(let i=0;i<90;i++){
+    fireworks.push(new Particle(cx, cy, colors[i%colors.length],5,11,85));
+  }
+  playFireworkMiddle();
+}
+
+function triggerFirework7(){
+  vibrate7(); //七连最强震动
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const colors = ["#ff3377","#ff9bb0","#ffdd55","#ffffff","#77ddff","#cc88ff","#88ffaa"];
+  for(let i=0;i<140;i++){
+    fireworks.push(new Particle(cx, cy, colors[i%colors.length],6,14,100));
+  }
+  playFireworkBig();
+}
+
+function drawLines(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  animTime += 0.04;
+
+  for(let line of lineList){
+    const flash = Math.sin(animTime * 6) * 0.45 + 0.55;
+    ctx.beginPath();
+    ctx.globalAlpha = flash;
+    ctx.strokeStyle = line.color;
+    ctx.lineWidth = 5;
+    ctx.lineCap="round";
+    const start = getCellCenter(line.points[0].r, line.points[0].c);
+    ctx.moveTo(start.x, start.y);
+    for(let i=1;i<line.points.length;i++){
+      const p = getCellCenter(line.points[i].r, line.points[i].c);
+      ctx.lineTo(p.x,p.y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  fireworks.forEach(p=>{
+    p.update();
+    p.draw();
+  });
+  fireworks = fireworks.filter(p=>p.life>0);
+
+  requestAnimationFrame(drawLines);
+}
+
+function getCellCenter(r,c){
+  const cells = document.querySelectorAll(".cell");
+  const idx = (r-1)*7 + (c-1);
+  const dom = cells[idx];
+  const rect = dom.getBoundingClientRect();
+  const wrap = document.querySelector(".board-wrap");
+  const wrapRect = wrap.getBoundingClientRect();
+  return {
+    x: rect.left - wrapRect.left + rect.width/2,
+    y: rect.top - wrapRect.top + rect.height/2
+  }
+}
+
+function getActiveCount(){
+  return active.size;
+}
+
+function updateWishPanel(){
+  const wishNumDom = document.getElementById("wishNum");
+  if(wishCellId !== null){
+    wishNumDom.innerText = wishCellId + "（未许愿成功）";
+  }else if(finalWishId !== null){
+    wishNumDom.innerText = finalWishId + "（许愿成功）";
+  }else{
+    wishNumDom.innerText = "无";
+  }
+  document.getElementById("wishLineLen").innerText = getActiveCount();
+}
+
+function clickCell(id){
+  initAudio();
+  if(active.has(id)){
+    active.delete(id);
+    if(finalWishId === id) finalWishId = null;
+    playCuteSound(false);
+    renderCells();
+    calcLines();
+    return;
+  }
+
+  if(usedWish){
+    active.add(id);
+    playCuteSound(true);
+    renderCells();
+    calcLines();
+    return;
+  }
+
+  if(wishCellId === null){
+    wishCellId = id;
+    playCuteSound(true);
+    renderCells();
+    calcLines();
+    return;
+  }
+
+  if(wishCellId === id){
+    wishCellId = null;
+    active.add(id);
+    finalWishId = id;
+    usedWish = true;
+    showWishPopup();
+    playCuteSound(true);
+    renderCells();
+    calcLines();
+    return;
+  }
+
+  active.add(id);
+  playCuteSound(true);
+  renderCells();
+  calcLines();
+}
+
+function renderCells(){
+  let cells = document.querySelectorAll(".cell");
+  cells.forEach(el=>{
+    let num = parseInt(el.innerText);
+    el.classList.remove("wish","active");
+    if(active.has(num)){
+      el.classList.add("active");
+    }else if(wishCellId === num){
+      el.classList.add("wish");
+    }
+  })
+}
+
+function clearAll(){
+  active.clear();
+  wishCellId = null;
+  finalWishId = null;
+  usedWish = false;
+  lineList = [];
+  fireworks = [];
+  triggeredKeys.clear();
+  renderCells();
+  calcLines();
+}
+
+const dirs = [
+  [0,1],
+  [1,0],
+  [1,1],
+  [1,-1]
+];
+
+
+function calcLines(){
+  let mark = Array.from({length:8},()=>Array(8).fill(0));
+  for(let id of active){
+    let {r,c}=id2rc(id);
+    mark[r][c]=1;
+  }
+  let cnt5=0,cnt6=0,cnt7=0;
+  lineList = [];
+
+  for(let r=1;r<=7;r++){
+    for(let c=1;c<=7;c++){
+      if(mark[r][c]!==1) continue;
+      for(let [dr,dc] of dirs){
+        let seq = [];
+        let cr=r,cc=c;
+        while(cr>=1&&cr<=7&&cc>=1&&cc<=7 && mark[cr][cc]===1){
+          seq.push({r:cr,c:cc});
+          cr+=dr; cc+=dc;
+        }
+        const L = seq.length;
+        if(L >=5){
+          const key = seq.map(p=>p.r+","+p.c).join("|");
+          const exist = lineList.some(item => item.key === key);
+          if(exist) continue;
+          lineList.push({points:seq, len:L, key});
+        }
+      }
+    }
+  }
+
+  const finalLines = [];
+  for(const line of lineList){
+    let hasLonger = false;
+    for(const other of lineList){
+      if(other.len > line.len){
+        const lineKeySet = new Set(line.points.map(p=>p.r+","+p.c));
+        const allIn = line.points.every(p => {
+          return other.points.some(op=>op.r===p.r && op.c===p.c);
+        });
+        if(allIn){
+          hasLonger = true;
+          break;
+        }
+      }
+    }
+    if(!hasLonger){
+      finalLines.push(line);
+    }
+  }
+
+  lineList = [];
+  cnt5=0;cnt6=0;cnt7=0;
+  for(const ln of finalLines){
+    const L = ln.len;
+    let color;
+    if(L===7){
+      cnt7++; color="#ff3377";
+      lineList.push({points:ln.points, color:color, len:7, key:ln.key});
+      if(!triggeredKeys.has(ln.key)){
+        triggeredKeys.add(ln.key);
+        triggerFirework7();
+      }
+    }else if(L===6){
+      cnt6++; color="#ff7722";
+      lineList.push({points:ln.points, color:color, len:6, key:ln.key});
+      if(!triggeredKeys.has(ln.key)){
+        triggeredKeys.add(ln.key);
+        triggerFirework6();
+      }
+    }else if(L===5){
+      cnt5++; color="#ffcc22";
+      lineList.push({points:ln.points, color:color, len:5, key:ln.key});
+      if(!triggeredKeys.has(ln.key)){
+        triggeredKeys.add(ln.key);
+        triggerFirework5();
+      }
+    }
+  }
+
+  const existKeys = new Set(lineList.map(l=>l.key));
+  triggeredKeys.forEach(k=>{
+    if(!existKeys.has(k)) triggeredKeys.delete(k);
+  });
+
+  document.getElementById("c5").innerText = cnt5;
+  document.getElementById("c6").innerText = cnt6;
+  document.getElementById("c7").innerText = cnt7;
+  updateWishPanel();
+}
+
+calcLines();
+resizeCanvas();
+drawLines();
+</script>
+</body>
+</html>
